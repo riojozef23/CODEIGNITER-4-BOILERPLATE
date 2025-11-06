@@ -1,0 +1,75 @@
+services:
+  # PHP Codeigniter 4 Service
+  app:
+    container_name: ci_app
+    build:
+      dockerfile: ./conf/php/php-fpm.dockerfile
+    image: ci_boilerplate:fpm
+    volumes:
+      - ./src/app_ci/:/var/www/html
+      - writable_volume:/var/www/html/writable
+    expose:
+      - "9000"
+    user: "www-data"
+    depends_on:
+      - db
+    # --- HEALTHCHECK for PHP-FPM ---
+    healthcheck:
+      # Check if PHP-FPM is responding on port 9000
+      test: ["CMD", "sh", "-c", "nc -z localhost 9000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # NGINX Service
+  nginx:
+    container_name: ci_webserver
+    image: nginx:latest
+    ports:
+      - "8000:80"
+    volumes:
+      - ./src/app_ci/:/var/www/html
+      - ./conf/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+      - db
+    # --- HEALTHCHECK for NGINX ---
+    healthcheck:
+      # Check HTTP status 200 on localhost
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s 
+
+  # MySQL Service
+  db:
+    container_name: ci_mysql
+    image: mysql:latest
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    # --- HEALTHCHECK for MySQL ---
+    healthcheck:
+      test: ["CMD", "sh", "-c", "mysql --silent -h localhost -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  writable_volume:
+    external: false
+  db_data:
+    driver: local
+
+networks:
+  default:
+    driver: bridge
